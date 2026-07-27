@@ -21,3 +21,21 @@ target/
 generated/
 
 **/.DS_Store
+
+# --- Additions for the chaos/ops-lab fork ---
+# Append these to the existing upstream .gitignore, don't replace it.
+
+# Local env overrides used when testing chaos toggles outside docker-compose
+.env
+.env.local
+
+# Any locally-built jars produced by manual build.sh runs, not meant to be committed
+*.jar.orig
+build-output/
+
+# Local scratch notes while porting a chaos scenario
+chaos/NOTES.md
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
+.vscode/
