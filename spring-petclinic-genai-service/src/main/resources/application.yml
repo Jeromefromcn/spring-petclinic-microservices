@@ -11,6 +11,8 @@ spring:
     consul:
       host: ${CONSUL_HOST:localhost}
       port: ${CONSUL_PORT:8500}
+    refresh:
+      never-refreshable: dataSource
   ai:
     chat:
       client:
