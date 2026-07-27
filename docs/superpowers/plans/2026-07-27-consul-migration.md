@@ -1743,3 +1743,61 @@ git add spring-petclinic-customers-service/src/main/resources/application.yml \
         spring-petclinic-genai-service/src/main/resources/application.yml
 git commit -m "Fix Consul KV write crash: exclude dataSource bean from ConfigurationPropertiesRebinder"
 ```
+
+---
+
+### Task 14: Raise memory headroom for the 4 JPA-backed services (Task 13's follow-up)
+
+**Why this task exists:** Task 13's review found that even after fixing the crash, every
+successful Consul-KV-triggered refresh still costs real memory (`ContextRefresher` builds
+a throwaway application context per refresh, landing mostly in non-heap/metaspace), and
+`customers-service`/`visits-service`/`vets-service`/`genai-service` already idle at
+~450-500MB against the `docker-compose.yml` 512M limit — only a few dozen MB, or under a
+dozen refreshes, of headroom. This isn't a code defect to fix, it's a sizing problem to
+correct before the chaos-toggles sub-project makes frequent KV writes the normal
+interaction pattern.
+
+**Fix:** raise `deploy.resources.limits.memory` from `512M` to `1024M` for exactly the 4
+affected services in `docker-compose.yml` (`consul`, `api-gateway`, `admin-server`,
+`tracing-server`, `grafana-server`, `prometheus-server` are untouched — their memory
+profiles weren't measured as tight and doubling every service's limit isn't warranted by
+what was actually observed).
+
+**Verified:** brought up `consul` + `customers-service` fresh with the new limit, then
+fired 25 sequential Consul KV writes (roughly 3x the ~8 writes that OOM-killed the old
+512M container in Task 13's review) 2 seconds apart. Health stayed `200` throughout;
+memory grew from ~489MiB to ~550MiB and the growth rate was clearly flattening (large
+early increments, much smaller later ones — consistent with one-time class/proxy loading
+costs stabilizing, not an unbounded linear leak) — comfortably inside the new 1024M
+ceiling with room to spare. All 25 test keys deleted afterward; `docker compose down` run
+clean.
+
+- [ ] **Step 1: Raise the memory limit for the 4 affected services**
+
+In `docker-compose.yml`, change `memory: 512M` to `memory: 1024M` under each of
+`customers-service`, `visits-service`, `vets-service`, and `genai-service`'s
+`deploy.resources.limits` block. Leave every other service's memory limit untouched.
+
+- [ ] **Step 2: Stress-test the new headroom**
+
+```bash
+docker compose up -d consul customers-service
+sleep 20
+for i in $(seq 1 25); do
+  curl -s -X PUT http://localhost:8500/v1/kv/config/customers-service/data/stress.$i -d "value-$i" > /dev/null
+  sleep 2
+  curl -s -o /dev/null -w "write $i: %{http_code}\n" http://localhost:8081/actuator/health
+done
+```
+Expected: `200` on every write, no crash. Then clean up:
+```bash
+for i in $(seq 1 25); do curl -s -X DELETE http://localhost:8500/v1/kv/config/customers-service/data/stress.$i > /dev/null; done
+docker compose down
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docker-compose.yml
+git commit -m "Raise memory limits for JPA-backed services to give Consul-refresh headroom"
+```

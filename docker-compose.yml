@@ -21,7 +21,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
     depends_on:
       consul:
         condition: service_healthy
@@ -34,7 +34,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
     depends_on:
       consul:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
     depends_on:
       consul:
         condition: service_healthy
@@ -65,7 +65,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
     depends_on:
       consul:
         condition: service_healthy
