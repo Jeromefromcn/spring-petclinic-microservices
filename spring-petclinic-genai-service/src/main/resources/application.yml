@@ -12,7 +12,7 @@ spring:
       host: ${CONSUL_HOST:localhost}
       port: ${CONSUL_PORT:8500}
     refresh:
-      never-refreshable: dataSource
+      never-refreshable: dataSource,com.zaxxer.hikari.HikariDataSource
   ai:
     chat:
       client:

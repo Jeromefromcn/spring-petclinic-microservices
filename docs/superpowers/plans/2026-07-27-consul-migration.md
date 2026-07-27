@@ -1640,11 +1640,17 @@ Consul KV without a restart, and it also blocks the PostgreSQL sub-project's sta
    the proxy — and its strict type check throws:
    `IllegalArgumentException: 'existingValue' must be an instance of com.zaxxer.hikari.HikariDataSource`.
 5. This is caught by the scheduled task's error handler (doesn't crash the JVM by itself),
-   but `ConfigWatch` retries on every poll cycle (~1s, no backoff), forever. Each failed
-   attempt leaks a small amount of memory (confirmed: baseline ~500MB climbing to ~510MB+
-   over ~90s against the `docker-compose.yml`-declared, and actually enforced by this
-   Docker Compose version (v5.1.4) even outside Swarm mode, 512M hard limit), and the
-   container is eventually OOM-killed (`OOMKilled=true, ExitCode=137`, reproduced twice).
+   but `ConfigWatch` retries on every poll cycle (~1s, no backoff), forever. Each refresh
+   attempt — failed or not — costs real memory: `ContextRefresher.refreshEnvironment()`
+   builds a throwaway application context per refresh, and that cost lands mostly in
+   non-heap/metaspace, which is uncapped by default. Pre-fix, the ~1/s infinite failed-retry
+   loop burns through this budget in under two minutes against the `docker-compose.yml`-
+   declared, and actually enforced by this Docker Compose version (v5.1.4) even outside
+   Swarm mode, 512M hard limit, and the container is OOM-killed (`OOMKilled=true,
+   ExitCode=137`, reproduced twice). **Post-fix, the same non-heap growth still happens on
+   every *successful* refresh** — it's a pre-existing sizing/headroom problem this bug
+   exposed rather than caused (see the note after the fix below), not something the fix
+   itself introduces.
 6. `admin-server` (no `DataSource` bean) does **not** exhibit this — confirmed by writing
    to its own KV path and observing no error, no health degradation. `api-gateway` has no
    datasource dependency either, so by the same mechanism it's not expected to be affected.
@@ -1655,7 +1661,7 @@ refresh):** add
 spring:
   cloud:
     refresh:
-      never-refreshable: dataSource
+      never-refreshable: dataSource,com.zaxxer.hikari.HikariDataSource
 ```
 to the 4 affected services' `application.yml` (default/root document, alongside the other
 `spring.cloud.consul.*` keys). This is a real, current, documented property on
@@ -1663,6 +1669,29 @@ to the 4 affected services' `application.yml` (default/root document, alongside 
 to never be refreshed or rebound") — not the older, genuinely-obsolete
 `spring.cloud.refresh.refreshable` boolean that Task 12 correctly dropped (confirmed that
 property no longer exists in this version's configuration metadata at all).
+
+Decompiling `ConfigurationPropertiesRebinder.rebind()` during review confirmed *why*
+Spring Cloud's own built-in guard doesn't already catch this: it defaults
+`never-refreshable` to `com.zaxxer.hikari.HikariDataSource` and checks it against
+`bean.getClass().getName()` — but only after `AopUtils.isAopProxy(bean)` unwraps genuine
+Spring AOP proxies first. The `datasource-micrometer-spring-boot` proxy is a plain JDK
+proxy, not a Spring AOP proxy, so it's never unwrapped and the class-name check never
+matches. The rebinder separately checks the *bean name* against the same list — that's
+the hook this fix actually uses. The fix's value keeps both the original class-name guard
+and the new bean-name guard (`dataSource,com.zaxxer.hikari.HikariDataSource`) rather than
+replacing the built-in default outright, so anything else that might legitimately need the
+class-name guard still gets it.
+
+**Known follow-up, not fixed here (flagged, not blocking):** even after this fix, every
+*successful* Consul KV refresh still costs non-heap/metaspace memory via
+`ContextRefresher`'s throwaway context, and this container's baseline idle memory
+(~450MB) already leaves only a few dozen MB of headroom under the 512M limit — a burst of
+~8-10 refreshes in quick succession can still OOM-kill the container even with zero
+errors. This is a pre-existing sizing problem, not something this fix introduces, but it
+directly matters for the chaos-toggles sub-project (whose entire premise is frequent
+Consul-KV-driven refreshes) and should be addressed — raising the affected services'
+`deploy.resources.limits.memory` in `docker-compose.yml` and/or bounding JVM metaspace
+growth explicitly — before that sub-project starts relying on frequent live KV writes.
 
 Verified with a throwaway container + KV key (`docker run` with
 `SPRING_CLOUD_REFRESH_NEVER_REFRESHABLE=dataSource`, bypassing file edits to test the

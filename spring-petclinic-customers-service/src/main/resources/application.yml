@@ -8,7 +8,7 @@ spring:
       host: ${CONSUL_HOST:localhost}
       port: ${CONSUL_PORT:8500}
     refresh:
-      never-refreshable: dataSource
+      never-refreshable: dataSource,com.zaxxer.hikari.HikariDataSource
   sql:
     init:
       schema-locations: classpath*:db/hsqldb/schema.sql
