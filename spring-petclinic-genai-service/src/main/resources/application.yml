@@ -31,16 +31,38 @@ spring:
         options:
             temperature: 0.7
             model: gpt-4o-mini
+  sql:
+    init:
+      schema-locations: classpath*:db/hsqldb/schema.sql
+      data-locations: classpath*:db/hsqldb/data.sql
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
 
-
+server:
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1
 logging:
   level:
-    org:
-      springframework:
-        ai:
-          chat:
-            client:
-              advisor: DEBUG
+    org.springframework: INFO
+    org.springframework.ai.chat.client.advisor: DEBUG
 ---
 spring:
   config:
@@ -50,3 +72,29 @@ spring:
     consul:
       host: consul
       port: 8500
+server:
+  port: 8084
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: "http://tracing-server:9411/api/v2/spans"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: chaos-monkey
+management:
+  endpoint:
+    chaosmonkey:
+      enabled: true
+chaos:
+  monkey:
+    enabled: true
+    watcher:
+      component: false
+      controller: false
+      repository: false
+      rest-controller: false
+      service: false
