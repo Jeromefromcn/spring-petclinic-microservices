@@ -6,7 +6,11 @@ spring:
   profiles:
     active: production
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/},optional:classpath:/creds.yaml
+    import: optional:consul:,optional:classpath:/creds.yaml
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
   ai:
     chat:
       client:
@@ -42,4 +46,7 @@ spring:
   config:
     activate:
       on-profile: docker
-    import: configserver:http://config-server:8888
+  cloud:
+    consul:
+      host: consul
+      port: 8500
