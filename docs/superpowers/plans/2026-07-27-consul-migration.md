@@ -140,7 +140,7 @@ spring:
   application:
     name: customers-service
   config:
-    import: optional:consul:
+    import: "optional:consul:"
   cloud:
     consul:
       host: ${CONSUL_HOST:localhost}
@@ -277,7 +277,7 @@ spring:
   application:
     name: visits-service
   config:
-    import: optional:consul:
+    import: "optional:consul:"
   cloud:
     consul:
       host: ${CONSUL_HOST:localhost}
@@ -417,7 +417,7 @@ spring:
   application:
     name: vets-service
   config:
-    import: optional:consul:
+    import: "optional:consul:"
   cloud:
     consul:
       host: ${CONSUL_HOST:localhost}
@@ -620,7 +620,7 @@ spring:
   application:
     name: api-gateway
   config:
-    import: optional:consul:
+    import: "optional:consul:"
   cloud:
     consul:
       host: ${CONSUL_HOST:localhost}
@@ -767,7 +767,7 @@ spring:
   application:
     name: admin-server
   config:
-    import: optional:consul:
+    import: "optional:consul:"
   cloud:
     consul:
       host: ${CONSUL_HOST:localhost}
