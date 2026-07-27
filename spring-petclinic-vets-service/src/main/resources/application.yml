@@ -13,10 +13,15 @@ spring:
     cache-names: vets
   profiles:
     active: production
+  datasource:
+    url: jdbc:postgresql://${db.host}:${db.port}/${db.name}
+    username: ${db.user}
+    password: ${db.password}
   sql:
     init:
-      schema-locations: classpath*:db/hsqldb/schema.sql
-      data-locations: classpath*:db/hsqldb/data.sql
+      schema-locations: classpath*:db/postgresql/schema.sql
+      data-locations: classpath*:db/postgresql/data.sql
+      mode: always
   jpa:
     open-in-view: false
     hibernate:
@@ -80,17 +85,3 @@ chaos:
       rest-controller: false
       service: false
 
----
-spring:
-  config:
-    activate:
-      on-profile: mysql
-  datasource:
-    url: jdbc:mysql://localhost:3306/petclinic?allowPublicKeyRetrieval=true&useSSL=false
-    username: root
-    password: petclinic
-  sql:
-    init:
-      schema-locations: classpath*:db/mysql/schema.sql
-      data-locations: classpath*:db/mysql/data.sql
-      mode: ALWAYS
