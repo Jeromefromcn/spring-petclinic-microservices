@@ -1613,3 +1613,104 @@ git commit -m "Restore config-server-provided runtime properties lost in the Con
 git add README.md
 git commit -m "Point the mysql-profile README instructions at local application.yml instead of the deleted config repo"
 ```
+
+---
+
+### Task 13: Fix the Consul-KV-write crash (root cause, verified via systematic debugging)
+
+**Why this task exists:** Task 12's re-review found that writing *any* key to Consul KV
+under `config/<service>/` crashes that service. This blocks the next planned sub-project
+(chaos toggles), whose entire design assumes `@RefreshScope` config applies live from
+Consul KV without a restart, and it also blocks the PostgreSQL sub-project's stated design
+("connection properties now read from Consul KV").
+
+**Root cause (reproduced and confirmed empirically, not guessed):**
+1. Writing any key under a watched Consul KV prefix makes `ConfigWatch` fire a Spring
+   Cloud `RefreshEvent`.
+2. `RefreshEventListener` → `ContextRefresher.refreshEnvironment()` → publishes an event
+   that `ConfigurationPropertiesRebinder` handles by rebinding **every** registered
+   `@ConfigurationProperties` bean app-wide — not just ones related to what changed.
+3. On `customers-service`, `visits-service`, `vets-service`, and `genai-service` (the 4
+   services with a JPA `DataSource`), the `dataSource` bean is wrapped in a JDK dynamic
+   proxy by `datasource-micrometer-spring-boot`'s `DataSourceObservationBeanPostProcessor`
+   (confirmed via `/actuator/beans`: `dataSource => jdk.proxy2.$Proxy119`, not
+   `com.zaxxer.hikari.HikariDataSource`).
+4. `ConfigurationPropertiesRebinder.rebind()` calls `Bindable.withExistingValue()` on the
+   Hikari-specific `@ConfigurationProperties` bean using the *current* bean instance — now
+   the proxy — and its strict type check throws:
+   `IllegalArgumentException: 'existingValue' must be an instance of com.zaxxer.hikari.HikariDataSource`.
+5. This is caught by the scheduled task's error handler (doesn't crash the JVM by itself),
+   but `ConfigWatch` retries on every poll cycle (~1s, no backoff), forever. Each failed
+   attempt leaks a small amount of memory (confirmed: baseline ~500MB climbing to ~510MB+
+   over ~90s against the `docker-compose.yml`-declared, and actually enforced by this
+   Docker Compose version (v5.1.4) even outside Swarm mode, 512M hard limit), and the
+   container is eventually OOM-killed (`OOMKilled=true, ExitCode=137`, reproduced twice).
+6. `admin-server` (no `DataSource` bean) does **not** exhibit this — confirmed by writing
+   to its own KV path and observing no error, no health degradation. `api-gateway` has no
+   datasource dependency either, so by the same mechanism it's not expected to be affected.
+
+**Fix (tested minimally, confirmed to resolve the crash without breaking legitimate
+refresh):** add
+```yaml
+spring:
+  cloud:
+    refresh:
+      never-refreshable: dataSource
+```
+to the 4 affected services' `application.yml` (default/root document, alongside the other
+`spring.cloud.consul.*` keys). This is a real, current, documented property on
+`spring-cloud-context:5.0.0` ("Comma separated list of bean names or class names for beans
+to never be refreshed or rebound") — not the older, genuinely-obsolete
+`spring.cloud.refresh.refreshable` boolean that Task 12 correctly dropped (confirmed that
+property no longer exists in this version's configuration metadata at all).
+
+Verified with a throwaway container + KV key (`docker run` with
+`SPRING_CLOUD_REFRESH_NEVER_REFRESHABLE=dataSource`, bypassing file edits to test the
+hypothesis in isolation first): before the fix, writing a KV key produces continuous
+`Fail fast is set...IllegalArgumentException` log spam and eventual OOM-kill; after the
+fix, the same KV write produces a clean `Refresh keys changed: [data.<key>]` log line, the
+health endpoint stays `200`, and the written value is genuinely visible under
+`/actuator/env` sourced from `config/<service>/` — proving the config-import + live-refresh
+path this whole sub-project exists to deliver actually works end-to-end.
+
+**Files:**
+- Modify: `spring-petclinic-customers-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-visits-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-vets-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-genai-service/src/main/resources/application.yml`
+
+(`api-gateway` and `admin-server` have no `DataSource` bean, so they're not touched by
+this task — the root cause structurally cannot occur without one.)
+
+- [ ] **Step 1: Add `spring.cloud.refresh.never-refreshable: dataSource` to the default
+  document of all 4 affected services' `application.yml`**, alongside the existing
+  `spring.cloud.consul.host`/`port` keys added in Tasks 2-4/7.
+
+- [ ] **Step 2: Rebuild and re-run the Consul KV crash reproduction against the real files**
+
+```bash
+./mvnw clean package -pl spring-petclinic-customers-service,spring-petclinic-visits-service,spring-petclinic-vets-service,spring-petclinic-genai-service
+./mvnw clean install -P buildDocker -pl spring-petclinic-customers-service,spring-petclinic-visits-service,spring-petclinic-vets-service,spring-petclinic-genai-service
+docker compose up -d consul customers-service
+sleep 20
+curl -X PUT http://localhost:8500/v1/kv/config/customers-service/data/test.marker -d 'hello'
+sleep 15
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8081/actuator/health   # expect 200, not 503
+docker compose logs customers-service | grep -c "Fail fast is set"              # expect 0
+curl -s http://localhost:8081/actuator/env/data.test.marker                     # expect the value to show up
+curl -X DELETE http://localhost:8500/v1/kv/config/customers-service/data/test.marker
+docker compose down
+```
+Repeat the same KV-write + health-check spot check for at least one more of the 3 other
+affected services (e.g. `vets-service`) to confirm the fix generalizes, not just
+`customers-service`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add spring-petclinic-customers-service/src/main/resources/application.yml \
+        spring-petclinic-visits-service/src/main/resources/application.yml \
+        spring-petclinic-vets-service/src/main/resources/application.yml \
+        spring-petclinic-genai-service/src/main/resources/application.yml
+git commit -m "Fix Consul KV write crash: exclude dataSource bean from ConfigurationPropertiesRebinder"
+```
