@@ -1748,7 +1748,16 @@ git commit -m "Fix Consul KV write crash: exclude dataSource bean from Configura
 
 ### Task 14: Raise memory headroom for the 4 JPA-backed services (Task 13's follow-up)
 
-**Why this task exists:** Task 13's review found that even after fixing the crash, every
+**Superseded, see Task 15:** this task's 512M→1024M bump was reverted back to 512M once
+the chaos-toggles KV path convention moved to a separate `chaos/<service>/<name>` prefix
+(outside what Spring Cloud Consul Config's `ConfigWatch` monitors) with its own dedicated
+lightweight watcher, instead of `@ConfigurationProperties` + Spring's refresh mechanism.
+That redesign removes the actual driver behind this task (frequent KV-triggered refreshes
+from toggle flips) — the section below is kept as the historical record of why the bump
+was made in the first place and what was measured at the time; it no longer reflects the
+current `docker-compose.yml`.
+
+**Why this task existed:** Task 13's review found that even after fixing the crash, every
 successful Consul-KV-triggered refresh still costs real memory (`ContextRefresher` builds
 a throwaway application context per refresh, landing mostly in non-heap/metaspace), and
 `customers-service`/`visits-service`/`vets-service`/`genai-service` already idle at
@@ -1800,4 +1809,65 @@ docker compose down
 ```bash
 git add docker-compose.yml
 git commit -m "Raise memory limits for JPA-backed services to give Consul-refresh headroom"
+```
+
+---
+
+### Task 15: Revert Task 14's memory bump now that chaos toggles bypass Spring's refresh entirely
+
+**Why this task exists:** the chaos-toggle KV path convention changed (documented in
+`CLAUDE.md`/`CHANGES.md`/`lab-environment`'s `ROADMAP.md`/`scenarios.yaml`/
+`init-consul-kv.sh`) from `config/<service>/data/chaos.*` to a separate
+`chaos/<service>/<name>` prefix, with a dedicated lightweight Consul KV watcher instead of
+`@ConfigurationProperties` + Spring Cloud Consul Config's built-in refresh. Since
+`ConfigWatch` only monitors the `config/` prefix, toggle flips will never again trigger
+`ContextRefresher`/`ConfigurationPropertiesRebinder` — the frequent-refresh scenario that
+justified Task 14's 512M→1024M bump no longer exists. What remains under `config/` is
+static bootstrap config (`db.host`, `db.port`, etc., seeded once by `init-consul-kv.sh`)
+that isn't expected to change often — an occasional manual change is well within what
+512M can absorb, and Task 13's `never-refreshable` fix (crash prevention) is independent
+of the memory limit and stays in effect regardless.
+
+**Fix:** revert `deploy.resources.limits.memory` from `1024M` back to `512M` for
+`customers-service`, `visits-service`, `vets-service`, and `genai-service` in
+`docker-compose.yml`.
+
+**Verified:** brought up `consul` + `customers-service` fresh at the reverted 512M limit
+(baseline ~469.5MiB). Fired 5 sequential `config/customers-service/data/*` writes, 5
+seconds apart (simulating occasional legitimate config changes, not a toggle-flipping
+burst) — health stayed `200` throughout, memory climbed to ~504MiB, comfortably under the
+512M limit. All 5 test keys deleted afterward; `docker compose down` run clean. This
+matches the expected usage pattern under the new design (infrequent `config/` changes,
+not frequent ones) — a rapid burst of 8+ writes in a row would still risk exhausting 512M
+(same curve Task 14 originally measured), but that scenario no longer corresponds to any
+real interaction pattern now that toggles live outside `config/`.
+
+- [ ] **Step 1: Revert the memory limit for the 4 affected services**
+
+In `docker-compose.yml`, change `memory: 1024M` back to `memory: 512M` under each of
+`customers-service`, `visits-service`, `vets-service`, and `genai-service`'s
+`deploy.resources.limits` block.
+
+- [ ] **Step 2: Verify with a realistic (non-burst) usage pattern**
+
+```bash
+docker compose up -d consul customers-service
+sleep 20
+for i in 1 2 3 4 5; do
+  curl -s -X PUT http://localhost:8500/v1/kv/config/customers-service/data/ops.test.$i -d "value-$i" > /dev/null
+  sleep 5
+  curl -s -o /dev/null -w "write $i: %{http_code}\n" http://localhost:8081/actuator/health
+done
+```
+Expected: `200` on every write, memory stays under 512M. Then clean up:
+```bash
+for i in 1 2 3 4 5; do curl -s -X DELETE http://localhost:8500/v1/kv/config/customers-service/data/ops.test.$i > /dev/null; done
+docker compose down
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docker-compose.yml
+git commit -m "Revert memory limits to 512M now that chaos toggles bypass Spring's refresh mechanism"
 ```
