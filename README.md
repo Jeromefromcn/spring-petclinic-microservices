@@ -132,34 +132,19 @@ Our issue tracker is available here: https://github.com/spring-petclinic/spring-
 
 ## Database configuration
 
-In its default configuration, Petclinic uses an in-memory database (HSQLDB) which gets populated at startup with data.
-A similar setup is provided for MySql in case a persistent database configuration is needed.
-Dependency for Connector/J, the MySQL JDBC driver is already included in the `pom.xml` files.
+`customers-service`, `vets-service`, and `visits-service` use PostgreSQL. Schema and seed data
+(`src/main/resources/db/postgresql/{schema,data}.sql`) are applied automatically on every service
+startup (`spring.sql.init.mode: always`), so each start resets to a known, deterministic dataset.
 
-### Start a MySql database
+Connection details (`db.host`, `db.port`, `db.name`, `db.user`, `db.password`) are not stored in
+this repo — they're read from Consul KV at `config/<service>/data/*` via
+`spring-cloud-starter-consul-config`. See the sibling
+[`lab-environment`](https://github.com/Jeromefromcn/lab-environment) repo's `docker-compose.yml`
+(provisions the `postgres` container and its 3 per-service databases) and
+`scripts/init-consul-kv.sh` (seeds the KV keys above) for how these are provisioned.
 
-You may start a MySql database with docker:
-
-```
-docker run -e MYSQL_ROOT_PASSWORD=petclinic -e MYSQL_DATABASE=petclinic -p 3306:3306 mysql:8.4.5
-```
-or download and install the MySQL database (e.g., MySQL Community Server 8.4.5 LTS), which can be found here: https://dev.mysql.com/downloads/
-
-### Use the Spring 'mysql' profile
-
-To use a MySQL database, you have to start 3 microservices (`visits-service`, `customers-service` and `vets-services`)
-with the `mysql` Spring profile. Add the `--spring.profiles.active=mysql` as program argument.
-
-By default, at startup, database schema will be created and data will be populated.
-You may also manually create the PetClinic database and data by executing the `"db/mysql/{schema,data}.sql"` scripts of each 3 microservices. 
-In the `mysql` profile document of each service's own `src/main/resources/application.yml`, set the `spring.sql.init.mode` to `never`.
-
-If you are running the microservices with Docker, you have to add the `mysql` profile into the [Dockerfile](docker/Dockerfile):
-```
-ENV SPRING_PROFILES_ACTIVE docker,mysql
-```
-In the `mysql` profile document of each service's own `src/main/resources/application.yml`, you have to change 
-the host and port of your MySQL JDBC connection string. 
+Tests run independently against an embedded HSQLDB instance
+(`src/test/resources/application-test.yml`), unaffected by the PostgreSQL setup above.
 
 ## Custom metrics monitoring
 
