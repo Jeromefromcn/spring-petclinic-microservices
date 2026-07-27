@@ -2,12 +2,18 @@ spring:
   application:
     name: visits-service
   config:
-    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/}
-
+    import: "optional:consul:"
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
 
 ---
 spring:
   config:
     activate:
       on-profile: docker
-    import: configserver:http://config-server:8888
+  cloud:
+    consul:
+      host: consul
+      port: 8500
