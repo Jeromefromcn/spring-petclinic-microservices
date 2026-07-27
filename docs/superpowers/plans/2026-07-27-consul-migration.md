@@ -1395,3 +1395,221 @@ Run: `docker compose down`
 Expected: all containers stopped and removed.
 
 No commit for this task — it's a verification-only pass. If any step fails, return to the relevant earlier task and fix it there (with its own commit) rather than patching ad hoc.
+
+---
+
+### Task 12: Restore config-server-provided runtime properties (post-final-review fix)
+
+**Why this task exists:** the final whole-branch review (opus) found that the deleted
+`spring-petclinic-config-server` was serving real runtime configuration beyond Eureka
+registration — pulled from the external git repo
+`spring-petclinic/spring-petclinic-microservices-config` — and Tasks 2-7 only migrated
+`spring.cloud.consul.host`/`port`, silently dropping everything else. Verified by cloning
+that repo and diffing its `application.yml` (shared) and each `<service>.yml` against
+what Tasks 2-7 actually produced. Confirmed empirically: services bind to the Spring Boot
+default port (8080) instead of their intended port under the `docker` profile, breaking
+every `docker-compose.yml` port mapping except `api-gateway`'s (which happens to already
+be 8080) and every Prometheus scrape target; HSQLDB seed data never loads; actuator only
+exposes `health`; Zipkin export has no docker-network endpoint; api-gateway's i18n
+`messages.basename` and compression are gone; the `mysql` profile has no datasource.
+
+This is a design-phase gap (the design spec assumed the local `application.yml` files
+were the full picture, without ever fetching the external config repo's actual content),
+not an implementation slip — Tasks 2-7 correctly did everything the plan told them to do.
+
+**Files:**
+- Modify: `spring-petclinic-customers-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-visits-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-vets-service/src/main/resources/application.yml`
+- Modify: `spring-petclinic-api-gateway/src/main/resources/application.yml`
+- Modify: `spring-petclinic-admin-server/src/main/resources/application.yml`
+- Modify: `spring-petclinic-genai-service/src/main/resources/application.yml`
+- Modify: `README.md` (fix the still-dangling "Configuration repository" references in the
+  "Use the Spring 'mysql' profile" section — Task 10 restored the link definition to stop
+  it rendering broken, but the instructions themselves still tell the reader to edit a
+  config repo that no longer applies to this fork's architecture)
+
+**Reference source (read-only, do not modify):** the external config repo has been cloned
+to `/tmp/claude-1001/-home-ubuntu-jerome-spring-petclinic-microservices/825bde82-c544-4313-bbcc-b6c0dae16b6b/scratchpad/config-repo-check/`
+for exact property values — `application.yml` (shared, applies to all services) plus
+`customers-service.yml`, `visits-service.yml`, `vets-service.yml`, `api-gateway.yml`,
+`admin-server.yml`, `genai-service.yml` (per-service overrides). If that path is gone,
+re-clone: `git clone --depth 1 https://github.com/spring-petclinic/spring-petclinic-microservices-config`.
+
+**Properties to restore (dropping anything Eureka-specific or Config-Server-specific,
+and anything obsolete for the current Spring Boot 4 / Spring Cloud 2025.1.0 stack —
+`management.security.enabled`, `spring.cloud.config.allow-override`/`override-none`,
+`spring.cloud.refresh.refreshable`, `eureka.*` are all correctly left out):**
+
+Add to the **default/root document** of all 6 services' `application.yml` (alongside the
+existing `spring.application.name`/`spring.config.import`/`spring.cloud.consul.*` keys):
+```yaml
+  sql:
+    init:
+      schema-locations: classpath*:db/hsqldb/schema.sql
+      data-locations: classpath*:db/hsqldb/data.sql
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+server:
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1
+logging:
+  level:
+    org.springframework: INFO
+```
+(`spring.sql.init.*` and `spring.jpa.*` only apply to the 4 JPA-backed services —
+`customers-service`, `visits-service`, `vets-service`, `genai-service` — Spring Boot
+ignores them harmlessly on `api-gateway`/`admin-server` if added there too, but it's
+cleaner to only add them where there's a datasource. Use judgment per service; if in
+doubt, check the service's `pom.xml` for `spring-boot-starter-data-jpa`.)
+
+Add to the **`docker` profile document** of all 6 services (alongside the existing
+`spring.cloud.consul.host: consul` / `port: 8500` block):
+```yaml
+server:
+  port: <service-specific — see table below>
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: "http://tracing-server:9411/api/v2/spans"
+```
+
+| Service | docker-profile `server.port` |
+|---|---|
+| `customers-service` | `8081` |
+| `visits-service` | `8082` |
+| `vets-service` | `8083` |
+| `genai-service` | `8084` |
+| `admin-server` | `9090` |
+| `api-gateway` | `8080` — but api-gateway's upstream config set this **unconditionally** (not docker-profile-gated) alongside `server.compression.*` and `spring.messages.basename: messages/messages`; add all three to api-gateway's default/root document instead of the docker-profile block, matching upstream exactly:
+```yaml
+server:
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: application/json,text/css,application/javascript
+    min-response-size: 2048
+spring:
+  messages:
+    basename: messages/messages
+```
+
+Add a **new `chaos-monkey` profile document** to all 6 services (this restores the
+pre-existing upstream `chaos-monkey-spring-boot` integration that `scripts/run_all.sh`
+already activates via `--spring.profiles.active=chaos-monkey` — unrelated to this fork's
+own planned Consul-KV-driven `chaos/` package, which is a separate future sub-project):
+```yaml
+---
+spring:
+  config:
+    activate:
+      on-profile: chaos-monkey
+management:
+  endpoint:
+    chaosmonkey:
+      enabled: true
+chaos:
+  monkey:
+    enabled: true
+    watcher:
+      component: false
+      controller: false
+      repository: false
+      rest-controller: false
+      service: false
+```
+
+Add a **new `mysql` profile document** to exactly the 3 services README.md's "Use the
+Spring 'mysql' profile" section documents — `customers-service`, `visits-service`,
+`vets-service` (not `genai-service`, not `api-gateway`/`admin-server`, which have no
+datasource):
+```yaml
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://localhost:3306/petclinic?allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: petclinic
+  sql:
+    init:
+      schema-locations: classpath*:db/mysql/schema.sql
+      data-locations: classpath*:db/mysql/data.sql
+      mode: ALWAYS
+```
+
+- [ ] **Step 1: Apply the restoration to all 6 services' `application.yml`**
+
+Follow the tables/blocks above exactly. Preserve every existing key already in each
+file (the Consul host/port blocks from Tasks 2-7, `vets-service`'s `cache`/`profiles`
+keys, `api-gateway`'s gateway routes, `genai-service`'s `spring.ai.*`/`logging.level.org
+.springframework.ai.*` keys) — this task only adds new keys/documents, it does not
+remove or restructure anything Tasks 1-11 already got right.
+
+- [ ] **Step 2: Fix README.md's "Use the Spring 'mysql' profile" section**
+
+The two remaining `[Configuration repository]` mentions
+(`In the application.yml of the [Configuration repository], set the initialization-mode
+to never.` and `In the mysql section of the application.yml from the [Configuration
+repository], you have to change the host and port...`) should point at the local files
+this task just created instead of a config repo that no longer exists in this
+architecture. Reword both sentences to reference each service's own
+`src/main/resources/application.yml` `mysql` profile document directly, and remove the
+now-fully-unused `[Configuration repository]: https://github.com/spring-petclinic/spring-petclinic-microservices-config`
+link definition (this time it really is orphaned, once these two mentions no longer use it).
+
+- [ ] **Step 3: Rebuild and re-run the full-stack integration check with real assertions**
+
+This supersedes Task 11's weaker (HTTP-200-only) check per the final review's Important
+finding — assert actual content and per-service ports, not just a status code.
+
+```bash
+./mvnw clean package
+./mvnw clean install -P buildDocker
+docker compose up -d consul customers-service visits-service vets-service api-gateway admin-server
+sleep 30
+```
+Then verify, and note the PASS/FAIL of each explicitly in your report:
+1. `curl -s http://localhost:8500/v1/catalog/services | tr ',' '\n'` — same 6 entries as Task 11.
+2. `curl -s http://localhost:8080/api/vet/vets | python3 -m json.tool` — expect a **non-empty** JSON array (this is the assertion Task 11 was missing).
+3. Direct per-service port checks from inside the compose network, e.g.
+   `docker compose exec api-gateway curl -sf http://vets-service:8083/vets` (and the analogous check for `customers-service:8081/owners`, `visits-service:8082/*`) — expect success, proving the restored `docker`-profile `server.port` actually took effect (the host-mapped ports may still be unreachable directly from this sandbox for unrelated network-policy reasons noted in Task 11's report — that's fine, this checks the port *inside* the docker network instead).
+4. `docker compose exec customers-service curl -sf http://localhost:8081/actuator/prometheus | head -5` — expect real Prometheus-format metric lines, not a 404.
+5. **Consul config-import round-trip** (validates the *config* half of the Consul migration, which nothing so far has actually exercised): write a throwaway key to Consul KV, e.g. `curl -X PUT http://localhost:8500/v1/kv/config/customers-service/data/test.marker -d 'hello-from-consul-kv'`, restart `customers-service` (`docker compose restart customers-service`), then `docker compose exec customers-service curl -s http://localhost:8081/actuator/env | grep -A3 test.marker` (or `/actuator/env/test.marker` if actuator is set up for that) and confirm the value `hello-from-consul-kv` is visible with a `consul:` property source. Delete the KV key afterward (`curl -X DELETE http://localhost:8500/v1/kv/config/customers-service/data/test.marker`) so no test artifact is left in Consul KV (this plan's Global Constraints require KV to stay empty).
+6. `docker compose down` to tear down.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add spring-petclinic-customers-service/src/main/resources/application.yml \
+        spring-petclinic-visits-service/src/main/resources/application.yml \
+        spring-petclinic-vets-service/src/main/resources/application.yml \
+        spring-petclinic-api-gateway/src/main/resources/application.yml \
+        spring-petclinic-admin-server/src/main/resources/application.yml \
+        spring-petclinic-genai-service/src/main/resources/application.yml
+git commit -m "Restore config-server-provided runtime properties lost in the Consul migration"
+
+git add README.md
+git commit -m "Point the mysql-profile README instructions at local application.yml instead of the deleted config repo"
+```
