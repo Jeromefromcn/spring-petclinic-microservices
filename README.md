@@ -152,13 +152,13 @@ with the `mysql` Spring profile. Add the `--spring.profiles.active=mysql` as pro
 
 By default, at startup, database schema will be created and data will be populated.
 You may also manually create the PetClinic database and data by executing the `"db/mysql/{schema,data}.sql"` scripts of each 3 microservices. 
-In the `application.yml` of the [Configuration repository], set the `initialization-mode` to `never`.
+In the `mysql` profile document of each service's own `src/main/resources/application.yml`, set the `spring.sql.init.mode` to `never`.
 
 If you are running the microservices with Docker, you have to add the `mysql` profile into the [Dockerfile](docker/Dockerfile):
 ```
 ENV SPRING_PROFILES_ACTIVE docker,mysql
 ```
-In the `mysql section` of the `application.yml` from the [Configuration repository], you have to change 
+In the `mysql` profile document of each service's own `src/main/resources/application.yml`, you have to change 
 the host and port of your MySQL JDBC connection string. 
 
 ## Custom metrics monitoring
@@ -273,7 +273,6 @@ The [issue tracker](https://github.com/spring-petclinic/spring-petclinic-microse
 For pull requests, editor preferences are available in the [editor config](.editorconfig) for easy use in common text editors. Read more and download plugins at <http://editorconfig.org>.
 
 
-[Configuration repository]: https://github.com/spring-petclinic/spring-petclinic-microservices-config
 [Spring Boot Actuator Production Ready Metrics]: https://docs.spring.io/spring-boot/docs/current/reference/html/production-ready-metrics.html
 
 ## Supported by
