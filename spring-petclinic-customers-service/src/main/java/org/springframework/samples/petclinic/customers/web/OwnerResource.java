@@ -20,7 +20,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.samples.petclinic.customers.chaos.ChaosToggles;
 import org.springframework.samples.petclinic.customers.web.mapper.OwnerEntityMapper;
 import org.springframework.samples.petclinic.customers.model.Owner;
 import org.springframework.samples.petclinic.customers.model.OwnerRepository;
@@ -42,13 +44,19 @@ import java.util.Optional;
 class OwnerResource {
 
     private static final Logger log = LoggerFactory.getLogger(OwnerResource.class);
+    private static final String SLOW_QUERY_TOGGLE = "slow-query-enabled";
 
     private final OwnerRepository ownerRepository;
     private final OwnerEntityMapper ownerEntityMapper;
+    private final ChaosToggles chaosToggles;
+    private final long slowQueryDelayMs;
 
-    OwnerResource(OwnerRepository ownerRepository, OwnerEntityMapper ownerEntityMapper) {
+    OwnerResource(OwnerRepository ownerRepository, OwnerEntityMapper ownerEntityMapper, ChaosToggles chaosToggles,
+                  @Value("${chaos.slow-query-delay-ms:3000}") long slowQueryDelayMs) {
         this.ownerRepository = ownerRepository;
         this.ownerEntityMapper = ownerEntityMapper;
+        this.chaosToggles = chaosToggles;
+        this.slowQueryDelayMs = slowQueryDelayMs;
     }
 
     /**
@@ -66,6 +74,7 @@ class OwnerResource {
      */
     @GetMapping(value = "/{ownerId}")
     public Optional<Owner> findOwner(@PathVariable("ownerId") @Min(1) int ownerId) {
+        simulateSlowQueryIfEnabled();
         return ownerRepository.findById(ownerId);
     }
 
@@ -74,6 +83,7 @@ class OwnerResource {
      */
     @GetMapping
     public List<Owner> findAll() {
+        simulateSlowQueryIfEnabled();
         return ownerRepository.findAll();
     }
 
@@ -88,5 +98,15 @@ class OwnerResource {
         ownerEntityMapper.map(ownerModel, ownerRequest);
         log.info("Saving owner {}", ownerModel);
         ownerRepository.save(ownerModel);
+    }
+
+    private void simulateSlowQueryIfEnabled() {
+        if (chaosToggles.isEnabled(SLOW_QUERY_TOGGLE)) {
+            try {
+                Thread.sleep(slowQueryDelayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 }
