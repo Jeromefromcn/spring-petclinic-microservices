@@ -22,7 +22,10 @@ import jakarta.validation.constraints.Min;
 import io.micrometer.core.annotation.Timed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.samples.petclinic.visits.cache.VisitCacheService;
+import org.springframework.samples.petclinic.visits.chaos.ChaosToggles;
 import org.springframework.samples.petclinic.visits.model.Visit;
 import org.springframework.samples.petclinic.visits.model.VisitRepository;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,11 +49,19 @@ import org.springframework.web.bind.annotation.RestController;
 class VisitResource {
 
     private static final Logger log = LoggerFactory.getLogger(VisitResource.class);
+    private static final String SLOW_QUERY_TOGGLE = "slow-query-enabled";
 
     private final VisitRepository visitRepository;
+    private final VisitCacheService visitCacheService;
+    private final ChaosToggles chaosToggles;
+    private final long slowQueryDelayMs;
 
-    VisitResource(VisitRepository visitRepository) {
+    VisitResource(VisitRepository visitRepository, VisitCacheService visitCacheService, ChaosToggles chaosToggles,
+                  @Value("${chaos.slow-query-delay-ms:3000}") long slowQueryDelayMs) {
         this.visitRepository = visitRepository;
+        this.visitCacheService = visitCacheService;
+        this.chaosToggles = chaosToggles;
+        this.slowQueryDelayMs = slowQueryDelayMs;
     }
 
     @PostMapping("owners/*/pets/{petId}/visits")
@@ -61,7 +72,9 @@ class VisitResource {
 
         visit.setPetId(petId);
         log.info("Saving visit {}", visit);
-        return visitRepository.save(visit);
+        Visit saved = visitRepository.save(visit);
+        visitCacheService.evict(petId);
+        return saved;
     }
 
     @GetMapping("owners/*/pets/{petId}/visits")
@@ -71,8 +84,19 @@ class VisitResource {
 
     @GetMapping("pets/visits")
     public Visits read(@RequestParam("petId") List<Integer> petIds) {
-        final List<Visit> byPetIdIn = visitRepository.findByPetIdIn(petIds);
-        return new Visits(byPetIdIn);
+        simulateSlowQueryIfEnabled();
+        final List<Visit> visits = visitCacheService.findByPetIdIn(petIds);
+        return new Visits(visits);
+    }
+
+    private void simulateSlowQueryIfEnabled() {
+        if (chaosToggles.isEnabled(SLOW_QUERY_TOGGLE)) {
+            try {
+                Thread.sleep(slowQueryDelayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     record Visits(
