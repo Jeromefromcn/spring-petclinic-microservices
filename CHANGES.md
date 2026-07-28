@@ -54,6 +54,10 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 - Genuine Redis unavailability falls back to the database silently (ordinary cache-aside hygiene); the `redis-timeout` chaos toggle deliberately does *not* fall back — it sleeps then throws, so the failure stays visible for RCA training. Real network-layer sabotage (actually breaking the TCP connection) is deferred to the future Toxiproxy phase in `lab-environment`'s ROADMAP
 - Fixed: `RedisConfig`'s value serializer used `GenericJacksonJsonRedisSerializer.enableUnsafeDefaultTyping()`, which embeds a type id as the first element of a serialized array. `VisitCacheService` also caches empty results (pets with no visits), and Jackson cannot round-trip an empty array with a type id — deserializing it threw `MismatchedInputException`, uncaught by `getFromCache`'s `catch (DataAccessException)` (that exception is `SerializationException`, which isn't a `DataAccessException`), surfacing as a 500 on `GET pets/visits?petId=` for any pet with no visit history, which in turn 502'd the `GET /owners/{id}/visits` aggregation endpoint (item 4) on its next call. Fixed at the root by serializing against the concrete `List<Visit>` type (`JacksonJsonRedisSerializer` with an explicit `JavaType`) instead of polymorphic default typing — `VisitCacheService` never stores anything else, so no type id needs to be embedded at all
 
+### 6. Distributed tracing endpoint hostname ✅
+
+- All 6 services' `docker` profile hardcoded `management.tracing.export.zipkin.endpoint` to `http://tracing-server:9411/...`, matching this repo's own (unused) `docker-compose.yml`. `lab-environment`'s compose file names the same role's container `jaeger`, and never defines a `tracing-server` alias — so every service failed to resolve the collector host and silently dropped all spans (`UnresolvedAddressException`) when actually deployed. Changed the hostname to `jaeger` in all 6 `application.yml` files to match `lab-environment`'s actual service name
+
 ## Explicitly Not Changed
 
 - Core domain model (Owner, Pet, Vet, Visit) — untouched, except `Owner` gained a `setId` setter for test fixtures (see item 4)

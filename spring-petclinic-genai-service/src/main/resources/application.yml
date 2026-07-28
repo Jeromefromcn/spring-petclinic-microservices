@@ -80,7 +80,7 @@ management:
   tracing:
     export:
       zipkin:
-        endpoint: "http://tracing-server:9411/api/v2/spans"
+        endpoint: "http://jaeger:9411/api/v2/spans"
 
 ---
 spring:
