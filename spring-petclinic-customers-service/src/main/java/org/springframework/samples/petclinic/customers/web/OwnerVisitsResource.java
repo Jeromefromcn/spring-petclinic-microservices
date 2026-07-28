@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.customers.web;
 
+import io.micrometer.core.annotation.Timed;
 import jakarta.validation.constraints.Min;
 import org.springframework.samples.petclinic.customers.model.Owner;
 import org.springframework.samples.petclinic.customers.model.OwnerRepository;
@@ -16,6 +17,7 @@ import static java.util.stream.Collectors.groupingBy;
 
 @RequestMapping("/owners")
 @RestController
+@Timed("petclinic.owner.visits")
 class OwnerVisitsResource {
 
     private final OwnerRepository ownerRepository;

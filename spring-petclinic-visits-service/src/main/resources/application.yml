@@ -16,6 +16,16 @@ spring:
     url: jdbc:postgresql://${data.db.host}:${data.db.port}/${data.db.name}
     username: ${data.db.user}
     password: ${data.db.password}
+  # Same `data.` prefix gotcha as spring.datasource above: KV key `config/<service>/data/redis.host`
+  # becomes property `data.redis.host`, which Spring Boot's Redis auto-config does not read on its
+  # own — it reads `spring.data.redis.host`. Map explicitly, no defaults (fail fast, same rationale
+  # as the datasource block above).
+  data:
+    redis:
+      host: ${data.redis.host}
+      port: ${data.redis.port}
+      timeout: 2s
+      connect-timeout: 1s
   sql:
     init:
       schema-locations: classpath*:db/postgresql/schema.sql

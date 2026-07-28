@@ -45,6 +45,7 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 
 - `GET /owners/{ownerId}/visits` in `customers-service` (`OwnerVisitsResource`) assembles an owner's pets with each pet's visit history by calling visits-service server-side via a new `@LoadBalanced RestTemplate` (`VisitsServiceClient`) — produces a real multi-hop trace (previously all calls were single-hop through the gateway)
 - Downstream failures (timeout, 5xx, connection refused) surface as `DownstreamServiceException` → HTTP 502
+- `Owner` gained a `setId(Integer)` setter, needed by test fixtures for this endpoint's tests — mirrors `Pet`'s existing `setId` convention
 
 ### 5. Redis cache-aside in visits-service ✅
 
@@ -54,7 +55,7 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 
 ## Explicitly Not Changed
 
-- Core domain model (Owner, Pet, Vet, Visit) — untouched
+- Core domain model (Owner, Pet, Vet, Visit) — untouched, except `Owner` gained a `setId` setter for test fixtures (see item 4)
 - API Gateway routing logic — untouched except for Consul-based service resolution
 - Frontend — untouched
 - `admin-server`, `genai-service` — Consul-migrated for build consistency only (see item 1); not built or deployed by `lab-environment`, no further changes planned

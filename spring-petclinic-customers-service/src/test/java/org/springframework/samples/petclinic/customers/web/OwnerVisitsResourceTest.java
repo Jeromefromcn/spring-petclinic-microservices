@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -86,5 +87,32 @@ class OwnerVisitsResourceTest {
         mvc.perform(get("/owners/3/visits"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.pets").isEmpty());
+    }
+
+    @Test
+    void shouldReturn502WhenVisitsServiceFails() throws Exception {
+        Owner owner = new Owner();
+        owner.setId(4);
+        owner.setFirstName("Alice");
+        owner.setLastName("Smith");
+        owner.setAddress("2 Main St.");
+        owner.setCity("Shelbyville");
+        owner.setTelephone("1234567890");
+
+        Pet pet = new Pet();
+        pet.setId(5);
+        pet.setName("Rex");
+        PetType type = new PetType();
+        type.setId(1);
+        type.setName("dog");
+        pet.setType(type);
+        owner.addPet(pet);
+
+        given(ownerRepository.findById(4)).willReturn(Optional.of(owner));
+        willThrow(new DownstreamServiceException("Simulated downstream error"))
+            .given(visitsServiceClient).getVisitsForPets(List.of(5));
+
+        mvc.perform(get("/owners/4/visits"))
+            .andExpect(status().isBadGateway());
     }
 }
