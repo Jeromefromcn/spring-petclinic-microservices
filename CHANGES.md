@@ -13,8 +13,8 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 | Service discovery | Eureka (`discovery-server` module) | Consul (`spring-cloud-starter-consul-discovery`) | ✅ |
 | Configuration | Config Server + Git-backed config repo | Consul KV (`spring-cloud-starter-consul-config`) | ✅ |
 | Database | H2 (default) / MySQL (optional profile) | PostgreSQL | ✅ |
-| Trace chain | Gateway → single service | Cross-service call so traces span 2+ hops | 📋 |
-| Fault injection | None | Consul-KV-driven chaos toggles per service | 📋 |
+| Trace chain | Gateway → single service | Cross-service call so traces span 2+ hops | ✅ |
+| Fault injection | None | Consul-KV-driven chaos toggles per service | ✅ |
 
 ## Detailed Changes
 
@@ -34,20 +34,23 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 - `spring.config.import` stays `"optional:consul:"` (not a hard `consul:` import) even for these datasource properties: if Consul is unreachable or unseeded, the service still fails to start (Hikari rejects an incomplete/empty JDBC URL) — that's intentional, since this fork is an ops-troubleshooting sandbox where a Consul-dependency failure is itself a realistic scenario worth reproducing, not a defect to engineer away
 - Design/plan: `docs/superpowers/specs/2026-07-28-postgresql-migration-design.md`, `docs/superpowers/plans/2026-07-28-postgresql-migration.md`
 
-### 3. Chaos toggles 📋 planned, not implemented
+### 3. Chaos toggles ✅
 
-- No `chaos/` Java package exists in any service yet
-- What *has* landed: a guard excluding the `dataSource` bean from `ConfigurationPropertiesRebinder` (prevents a crash when Consul KV is written to), and a manual trigger script (`scripts/chaos/call_chaos.sh`)
-- Remaining work: implement the toggle-reading watcher and the actual fault behavior (slow query, Redis timeout, forced downstream error) in `customers-service` and `visits-service`
-- Convention already fixed (see `lab-environment/CLAUDE.md`): toggles read from Consul KV at `chaos/<service>/<name>` — a separate top-level prefix, not under `config/`, so Spring Cloud Consul Config's own watch mechanism never sees these writes. Must use a dedicated, lightweight Consul KV watcher (not `@ConfigurationProperties`/`ContextRefresher`) so changes apply without a restart
-- Toggle names already reserved (must match `lab-environment/scripts/init-consul-kv.sh` and `scenarios/scenarios.yaml` once implemented):
-  - `slow-query-enabled` — adds artificial delay before a DB query
-  - `redis-timeout` — simulates Redis connection timeout
-  - `downstream-error` — forces a cross-service call to return an error
+- Per-service `chaos` package in `customers-service` and `visits-service` (duplicated, not a shared module — matches the existing per-service duplication of `config/MetricConfig`): `ChaosToggles` (in-memory holder, default OFF) + `ChaosToggleWatcher` (`@Scheduled` poll of `chaos/<service>/` via `com.ecwid.consul.v1.ConsulClient` directly, bypassing Spring Cloud Consul Config/`ContextRefresher` entirely)
+- `customers-service`: `slow-query-enabled` (delay before `OwnerRepository` reads in `OwnerResource`), `downstream-error` (forces `VisitsServiceClient` to fail immediately instead of calling visits-service)
+- `visits-service`: `slow-query-enabled` (delay before the cached visits read in `VisitResource`), `redis-timeout` (see item 5 below)
+- Design/plan: `docs/superpowers/specs/2026-07-28-aggregation-and-chaos-design.md`, `docs/superpowers/plans/2026-07-28-aggregation-and-chaos.md`
 
-### 4. Aggregation endpoint 📋 planned, not implemented
+### 4. Aggregation endpoint ✅
 
-- Not started. Intent: add an endpoint in `customers-service` that calls `visits-service` server-side to assemble an owner's full visit history, to produce a real multi-hop trace (currently calls are single-hop through the gateway only)
+- `GET /owners/{ownerId}/visits` in `customers-service` (`OwnerVisitsResource`) assembles an owner's pets with each pet's visit history by calling visits-service server-side via a new `@LoadBalanced RestTemplate` (`VisitsServiceClient`) — produces a real multi-hop trace (previously all calls were single-hop through the gateway)
+- Downstream failures (timeout, 5xx, connection refused) surface as `DownstreamServiceException` → HTTP 502
+
+### 5. Redis cache-aside in visits-service ✅
+
+- `visits-service` gained a real Redis dependency (`spring-boot-starter-data-redis`, Lettuce) and a cache-aside (`VisitCacheService`) in front of the `pets/visits?petId=` read path: key `visits:pet:{petId}`, 60s TTL, evicted on visit creation
+- Config via `spring.data.redis.host/port: ${data.redis.host}/${data.redis.port}` — already seeded by `lab-environment/scripts/init-consul-kv.sh`, no cross-repo change needed
+- Genuine Redis unavailability falls back to the database silently (ordinary cache-aside hygiene); the `redis-timeout` chaos toggle deliberately does *not* fall back — it sleeps then throws, so the failure stays visible for RCA training. Real network-layer sabotage (actually breaking the TCP connection) is deferred to the future Toxiproxy phase in `lab-environment`'s ROADMAP
 
 ## Explicitly Not Changed
 
