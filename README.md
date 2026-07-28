@@ -136,15 +136,18 @@ Our issue tracker is available here: https://github.com/spring-petclinic/spring-
 (`src/main/resources/db/postgresql/{schema,data}.sql`) are applied automatically on every service
 startup (`spring.sql.init.mode: always`), so each start resets to a known, deterministic dataset.
 
-Connection details (`db.host`, `db.port`, `db.name`, `db.user`, `db.password`) are not stored in
-this repo — they're read from Consul KV at `config/<service>/data/*` via
-`spring-cloud-starter-consul-config`. See the sibling
+Connection details are read from Consul KV at
+`config/<service>/data/{db.host,db.port,db.name,db.user,db.password}` via
+`spring-cloud-starter-consul-config` — note that Spring Cloud Consul Config's KEY_VALUE format
+turns each of these into a Spring property prefixed with `data.` (e.g. the KV key
+`.../data/db.host` becomes the property `data.db.host`), which is what `application.yml`'s
+`${data.db.host}` etc. actually reference. See the sibling
 [`lab-environment`](https://github.com/Jeromefromcn/lab-environment) repo's `docker-compose.yml`
 (provisions the `postgres` container and its 3 per-service databases) and
 `scripts/init-consul-kv.sh` (seeds the KV keys above) for how these are provisioned.
 
-Tests run independently against an embedded HSQLDB instance
-(`src/test/resources/application-test.yml`), unaffected by the PostgreSQL setup above.
+Tests use `@WebMvcTest` with mocked repositories and do not connect to a database at all;
+`application-test.yml`'s HSQLDB configuration exists but isn't currently exercised by any test.
 
 ## Custom metrics monitoring
 

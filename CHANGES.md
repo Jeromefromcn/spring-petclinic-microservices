@@ -12,7 +12,7 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 |---|---|---|---|
 | Service discovery | Eureka (`discovery-server` module) | Consul (`spring-cloud-starter-consul-discovery`) | ✅ |
 | Configuration | Config Server + Git-backed config repo | Consul KV (`spring-cloud-starter-consul-config`) | ✅ |
-| Database | H2 (default) / MySQL (optional profile) | PostgreSQL | 📋 |
+| Database | H2 (default) / MySQL (optional profile) | PostgreSQL | ✅ |
 | Trace chain | Gateway → single service | Cross-service call so traces span 2+ hops | 📋 |
 | Fault injection | None | Consul-KV-driven chaos toggles per service | 📋 |
 
@@ -27,11 +27,12 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 - Applied to all 6 remaining Maven modules, including `admin-server` and `genai-service` — required project-wide once Config Server was deleted, even though `lab-environment` never builds or deploys those two (see the contract table)
 - Design/plan: `docs/superpowers/specs/2026-07-27-consul-migration-design.md`, `docs/superpowers/plans/2026-07-27-consul-migration.md`
 
-### 2. Database: PostgreSQL 📋 planned, not implemented
+### 2. Database: PostgreSQL ✅
 
-- Not started. No `postgres` profile, no `postgresql` JDBC dependency, and no `db/postgres/` schema/data SQL exist yet in any service
-- `lab-environment/scripts/init-consul-kv.sh` already seeds `config/<service>/data/db.host|db.port|db.name|db.user|db.password` per service — this fork does not read those keys yet
-- Remaining work: add PostgreSQL driver dependency, a datasource profile that resolves `${db.host}`/`${db.port}`/`${db.name}` etc. from Consul KV, and translate `db/mysql/*.sql` to Postgres dialect, for `customers-service`, `vets-service`, `visits-service`
+- `customers-service`, `vets-service`, and `visits-service` now run against PostgreSQL. Added the `postgresql` JDBC driver dependency, removed the `mysql` profile and `db/mysql/*.sql` files entirely, and added `db/postgresql/{schema,data}.sql` (applied via `spring.sql.init.mode: always`, so every service start resets to a known dataset)
+- `lab-environment/scripts/init-consul-kv.sh` seeds `config/<service>/data/db.host|db.port|db.name|db.user|db.password` per service. Spring Cloud Consul Config's KEY_VALUE format derives property names from the KV path relative to `config/<service>/`, so KV key `config/<service>/data/db.host` becomes Spring property `data.db.host` — **not** `db.host`. `application.yml`'s datasource block references `${data.db.host}`/`${data.db.port}`/`${data.db.name}`/`${data.db.user}`/`${data.db.password}` accordingly (see comment above `spring.datasource` in each service's `application.yml`)
+- `spring.config.import` stays `"optional:consul:"` (not a hard `consul:` import) even for these datasource properties: if Consul is unreachable or unseeded, the service still fails to start (Hikari rejects an incomplete/empty JDBC URL) — that's intentional, since this fork is an ops-troubleshooting sandbox where a Consul-dependency failure is itself a realistic scenario worth reproducing, not a defect to engineer away
+- Design/plan: `docs/superpowers/specs/2026-07-28-postgresql-migration-design.md`, `docs/superpowers/plans/2026-07-28-postgresql-migration.md`
 
 ### 3. Chaos toggles 📋 planned, not implemented
 

@@ -9,6 +9,9 @@ spring:
       port: ${CONSUL_PORT:8500}
     refresh:
       never-refreshable: dataSource,com.zaxxer.hikari.HikariDataSource
+  # `data.` prefix is not a typo: Spring Cloud Consul Config (KEY_VALUE format) derives
+  # property names from the KV path relative to `config/<service>/`, so the KV key
+  # `config/<service>/data/db.host` becomes the property `data.db.host`.
   datasource:
     url: jdbc:postgresql://${data.db.host}:${data.db.port}/${data.db.name}
     username: ${data.db.user}
