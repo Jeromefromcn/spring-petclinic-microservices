@@ -10,9 +10,9 @@ spring:
     refresh:
       never-refreshable: dataSource,com.zaxxer.hikari.HikariDataSource
   datasource:
-    url: jdbc:postgresql://${db.host}:${db.port}/${db.name}
-    username: ${db.user}
-    password: ${db.password}
+    url: jdbc:postgresql://${data.db.host}:${data.db.port}/${data.db.name}
+    username: ${data.db.user}
+    password: ${data.db.password}
   sql:
     init:
       schema-locations: classpath*:db/postgresql/schema.sql
