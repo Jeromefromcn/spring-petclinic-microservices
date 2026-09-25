@@ -25,6 +25,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+# Downstream base URL: K8s Service DNS; load balancing is the mesh's job.
+petclinic:
+  services:
+    visits-url: http://visits-service:8082
 server:
   shutdown: graceful
 management:

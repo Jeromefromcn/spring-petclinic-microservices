@@ -15,41 +15,37 @@ spring:
               args:
                 name: defaultCircuitBreaker
                 fallbackUri: forward:/fallback
-            - name: Retry
-              args:
-                retries: 1
-                statuses: SERVICE_UNAVAILABLE
-                methods: POST
           routes:
             - id: vets-service
-              uri: lb://vets-service
+              uri: ${petclinic.services.vets-url}
               predicates:
                 - Path=/api/vet/**
               filters:
                 - StripPrefix=2
             - id: visits-service
-              uri: lb://visits-service
+              uri: ${petclinic.services.visits-url}
               predicates:
                 - Path=/api/visit/**
               filters:
                 - StripPrefix=2
             - id: customers-service
-              uri: lb://customers-service
+              uri: ${petclinic.services.customers-url}
               predicates:
                 - Path=/api/customer/**
               filters:
                 - StripPrefix=2
-            - id: genai-service
-              uri: lb://genai-service
-              predicates:
-                - Path=/api/genai/**
-              filters:
-                - StripPrefix=2
-                - CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback
   reactor:
     context-propagation: auto
   messages:
     basename: messages/messages
+# Downstream base URLs: K8s Service DNS. Load balancing, retries and
+# circuit breaking between services belong to the mesh (Envoy), not to a
+# client-side load balancer.
+petclinic:
+  services:
+    customers-url: http://customers-service:8081
+    visits-url: http://visits-service:8082
+    vets-url: http://vets-service:8083
 server:
   port: 8080
   shutdown: graceful

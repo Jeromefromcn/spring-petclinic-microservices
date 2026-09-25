@@ -23,14 +23,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.circuitbreaker.resilience4j.ReactiveResilience4JCircuitBreakerFactory;
 import org.springframework.cloud.circuitbreaker.resilience4j.Resilience4JConfigBuilder;
 import org.springframework.cloud.client.circuitbreaker.Customizer;
-import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.server.RequestPredicates;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.RouterFunctions;
@@ -42,24 +38,11 @@ import java.time.Duration;
 /**
  * @author Maciej Szarlinski
  */
-@EnableDiscoveryClient
 @SpringBootApplication
 public class ApiGatewayApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(ApiGatewayApplication.class, args);
-    }
-
-    @Bean
-    @LoadBalanced
-    RestTemplate loadBalancedRestTemplate() {
-        return new RestTemplate();
-    }
-
-    @Bean
-    @LoadBalanced
-    public WebClient.Builder loadBalancedWebClientBuilder() {
-        return WebClient.builder();
     }
 
     @Value("classpath:/static/index.html")

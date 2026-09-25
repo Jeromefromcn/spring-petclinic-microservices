@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.customers.web;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.samples.petclinic.customers.chaos.ChaosToggles;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
@@ -12,14 +13,15 @@ import static java.util.stream.Collectors.joining;
 @Component
 class VisitsServiceClient {
 
-    private static final String VISITS_SERVICE_URL = "http://visits-service/pets/visits?petId={petIds}";
-
     private final RestTemplate restTemplate;
     private final ChaosToggles chaosToggles;
+    private final String visitsUrl;
 
-    VisitsServiceClient(RestTemplate restTemplate, ChaosToggles chaosToggles) {
+    VisitsServiceClient(RestTemplate restTemplate, ChaosToggles chaosToggles,
+                        @Value("${petclinic.services.visits-url}") String visitsUrl) {
         this.restTemplate = restTemplate;
         this.chaosToggles = chaosToggles;
+        this.visitsUrl = visitsUrl;
     }
 
     List<VisitResponse> getVisitsForPets(List<Integer> petIds) {
@@ -34,7 +36,7 @@ class VisitsServiceClient {
 
         try {
             VisitsWireResponse response = restTemplate.getForObject(
-                VISITS_SERVICE_URL, VisitsWireResponse.class, joinIds(petIds));
+                visitsUrl + "/pets/visits?petId={petIds}", VisitsWireResponse.class, joinIds(petIds));
             return response == null ? List.of() : response.items();
         } catch (RestClientException e) {
             throw new DownstreamServiceException("Failed to fetch visits from visits-service", e);

@@ -57,10 +57,6 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-consul-config</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-consul-discovery</artifactId>
-        </dependency>
         <!-- Explicit: the chaos package imports com.ecwid.consul.v1.* directly (see CHANGES.md item 3).
              Currently only pulled in transitively via spring-cloud-starter-consul-config; declaring it
              explicitly avoids a silent compile break if that transitive dependency is ever dropped.

@@ -68,3 +68,10 @@ Companion repos: [`lab-environment`](https://github.com/Jeromefromcn/lab-environ
 ## Rationale
 
 See `ROADMAP.md` in the `lab-environment` repo, Phase 0–1, for why each of these changes was made.
+
+## K8s-native service discovery (2026-09-25)
+
+- Removed Consul discovery and Spring Cloud LoadBalancer from the four deployed services. Downstream calls use K8s Service DNS base URLs (`petclinic.services.*-url`); load balancing, retries and outlier detection move to the Istio mesh. Consul remains the config center (`config/` KV) and chaos-toggle store (`chaos/` KV).
+- Gateway: added `spring-boot-starter-webclient` so the injected `WebClient.Builder` is Boot's auto-configured, observation-instrumented one (keeps `traceparent` propagating).
+- Gateway: removed the `Retry` default filter (it retried non-idempotent POSTs, and stacked with mesh retries it multiplies load); kept the Resilience4j `CircuitBreaker` + fallback. Removed the never-deployed `genai-service` route.
+- Gateway: `/fallback` accepts any method. It was POST-only while the default CircuitBreaker forwards every route's failures to it, so failed GETs surfaced as 405 instead of 503.

@@ -17,13 +17,11 @@ package org.springframework.samples.petclinic.visits;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * @author Maciej Szarlinski
  */
-@EnableDiscoveryClient
 @EnableScheduling
 @SpringBootApplication
 public class VisitsServiceApplication {

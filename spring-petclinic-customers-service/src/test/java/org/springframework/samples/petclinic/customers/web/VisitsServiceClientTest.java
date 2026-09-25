@@ -25,7 +25,7 @@ class VisitsServiceClientTest {
     @BeforeEach
     void setUp() {
         server = MockRestServiceServer.bindTo(restTemplate).build();
-        client = new VisitsServiceClient(restTemplate, chaosToggles);
+        client = new VisitsServiceClient(restTemplate, chaosToggles, "http://visits.example:8082");
     }
 
     @Test
@@ -38,7 +38,7 @@ class VisitsServiceClientTest {
 
     @Test
     void fetchesVisitsFromVisitsService() {
-        server.expect(requestTo("http://visits-service/pets/visits?petId=111,222"))
+        server.expect(requestTo("http://visits.example:8082/pets/visits?petId=111,222"))
             .andRespond(withSuccess(
                 "{\"items\":[{\"id\":1,\"date\":\"2024-01-01\",\"description\":\"desc\",\"petId\":111}]}",
                 MediaType.APPLICATION_JSON));
@@ -52,7 +52,7 @@ class VisitsServiceClientTest {
 
     @Test
     void wrapsDownstreamFailureInDownstreamServiceException() {
-        server.expect(requestTo("http://visits-service/pets/visits?petId=111"))
+        server.expect(requestTo("http://visits.example:8082/pets/visits?petId=111"))
             .andRespond(withServerError());
 
         assertThatThrownBy(() -> client.getVisitsForPets(List.of(111)))
