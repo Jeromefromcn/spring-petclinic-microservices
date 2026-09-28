@@ -84,6 +84,13 @@ public class Owner {
         pet.setOwner(this);
     }
 
+    /**
+     * The owner's first pet by name, shown as a one-line summary on the owner card.
+     */
+    public String getPrimaryPetName() {
+        return getPets().stream().findFirst().map(Pet::getName).orElse(null);
+    }
+
     @Override
     public String toString() {
         return new ToStringCreator(this)
