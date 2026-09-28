@@ -85,10 +85,12 @@ public class Owner {
     }
 
     /**
-     * The owner's first pet by name, shown as a one-line summary on the owner card.
+     * The owner's pet, shown as a one-line summary on the owner card.
      */
     public String getPrimaryPetName() {
-        return getPets().stream().findFirst().map(Pet::getName).orElse(null);
+        return getPets().stream().map(Pet::getName).reduce((first, second) -> {
+            throw new IllegalStateException("owner " + id + " has more than one pet");
+        }).orElse(null);
     }
 
     @Override
