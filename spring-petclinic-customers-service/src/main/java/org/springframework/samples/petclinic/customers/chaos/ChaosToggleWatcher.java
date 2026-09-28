@@ -37,7 +37,7 @@ public class ChaosToggleWatcher {
                 if (name.isEmpty()) {
                     continue;
                 }
-                chaosToggles.set(name, Boolean.parseBoolean(value.getDecodedValue()));
+                chaosToggles.set(name, value.getDecodedValue());
             }
         } catch (Exception e) {
             log.warn("Failed to poll chaos toggles from Consul KV at '{}', keeping last known state", PREFIX, e);

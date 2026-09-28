@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.samples.petclinic.customers.chaos.ChaosToggles;
 import org.springframework.samples.petclinic.customers.model.Owner;
 import org.springframework.samples.petclinic.customers.model.OwnerRepository;
 import org.springframework.samples.petclinic.customers.model.Pet;
@@ -37,6 +38,10 @@ class PetResourceTest {
 
     @MockitoBean
     OwnerRepository ownerRepository;
+
+    // FailInstanceFilter is a servlet filter, so the MVC slice loads it.
+    @MockitoBean
+    ChaosToggles chaosToggles;
 
     @Test
     void shouldGetAPetInJSonFormat() throws Exception {
