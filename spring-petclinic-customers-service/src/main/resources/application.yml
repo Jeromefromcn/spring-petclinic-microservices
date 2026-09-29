@@ -48,6 +48,15 @@ management:
   tracing:
     sampling:
       probability: 1
+    # x-pr-lane selects a PR lane at every hop (docker-gitops lab PR lanes):
+    # remote-fields copies the incoming header onto instrumented outgoing
+    # calls, tag-fields puts it on the span (searchable in Jaeger),
+    # correlation puts it in the log MDC.
+    baggage:
+      remote-fields: x-pr-lane
+      tag-fields: x-pr-lane
+      correlation:
+        fields: x-pr-lane
 logging:
   level:
     org.springframework: INFO
