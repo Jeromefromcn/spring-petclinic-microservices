@@ -1,5 +1,5 @@
 # Builds the lab's business-service images for docker-gitops' lab-environment:
-# build (native arm64) -> push to GHCR -> Trivy (report-only) -> Cosign keyless sign.
+# build (native arm64) -> push to GHCR -> Trivy (CRITICAL gate) -> Cosign keyless sign.
 # Kyverno in the cluster admits only images signed by this workflow file.
 name: lab-images
 
@@ -133,9 +133,8 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:${{ env.TAG }}
 
-      # Report-only: the lab's Spring Boot 4.0.1 dependencies carry fixable
-      # CRITICAL CVEs, accepted for the demo (docker-gitops lab PR lanes).
-      # The table lands in the log; the image is still signed.
+      # Gate: a fixable CRITICAL CVE fails the build, so nothing unscanned or
+      # known-vulnerable gets signed.
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         env:
@@ -143,7 +142,7 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE }}:${{ env.TAG }}
           severity: CRITICAL
-          exit-code: '0'
+          exit-code: '1'
           ignore-unfixed: true
 
       - name: Install Cosign
