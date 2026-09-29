@@ -96,3 +96,4 @@ chaos:
       repository: false
       rest-controller: false
       service: false
+# lab PR lane capacity check (docker-gitops lab PR lanes plan, Task 9): no-op
