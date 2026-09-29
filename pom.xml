@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.1</version>
+        <version>4.0.8</version>
     </parent>
 
     <groupId>org.springframework.samples</groupId>
@@ -27,7 +27,11 @@
     <properties>
         <java.version>17</java.version>
 
-        <spring-cloud.version>2025.1.0</spring-cloud.version>
+        <spring-cloud.version>2025.1.3</spring-cloud.version>
+        <!-- Boot 4.0.8 manages tomcat 11.0.24, which still has fixable CRITICAL
+             CVEs (CVE-2026-65182 and others); the lab's Trivy gate needs 11.0.25+.
+             Drop this once Boot's managed version catches up. -->
+        <tomcat.version>11.0.26</tomcat.version>
         <chaos-monkey-spring-boot.version>3.1.0</chaos-monkey-spring-boot.version>
         <jolokia-core.version>1.7.1</jolokia-core.version>
         <datasource-micrometer.version>2.0.1</datasource-micrometer.version>
