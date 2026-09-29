@@ -21,8 +21,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
 
 jobs:
   plan:
@@ -48,7 +46,9 @@ jobs:
           case "$EVENT" in
             pull_request)
               sha=$HEAD
-              changed=$(git diff --name-only "$BASE" "$HEAD")
+              # Three dots: only what the PR changed since it branched, not what
+              # the base branch gained since.
+              changed=$(git diff --name-only "$BASE...$HEAD")
               if grep -qE '^(pom\.xml|docker/)' <<< "$changed"; then
                 services=$all
               else
@@ -73,6 +73,11 @@ jobs:
     needs: plan
     if: needs.plan.outputs.services != '[]'
     runs-on: ubuntu-24.04-arm
+    # Only this job pushes to GHCR and needs an OIDC token for Cosign.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
