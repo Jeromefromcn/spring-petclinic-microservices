@@ -97,3 +97,4 @@ chaos:
       rest-controller: false
       service: false
 
+# lab PR lane smoke test for vets-service (docker-gitops): no-op

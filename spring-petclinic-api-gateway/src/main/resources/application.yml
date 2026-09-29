@@ -115,3 +115,4 @@ chaos:
       repository: false
       rest-controller: false
       service: false
+# lab PR lane smoke test for api-gateway (docker-gitops): no-op
