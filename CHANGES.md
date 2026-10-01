@@ -75,3 +75,10 @@ See `ROADMAP.md` in the `lab-environment` repo, Phase 0–1, for why each of the
 - Gateway: added `spring-boot-starter-webclient` so the injected `WebClient.Builder` is Boot's auto-configured, observation-instrumented one (keeps `traceparent` propagating).
 - Gateway: removed the `Retry` default filter (it retried non-idempotent POSTs, and stacked with mesh retries it multiplies load); kept the Resilience4j `CircuitBreaker` + fallback. Removed the never-deployed `genai-service` route.
 - Gateway: `/fallback` accepts any method. It was POST-only while the default CircuitBreaker forwards every route's failures to it, so failed GETs surfaced as 405 instead of 503.
+
+## Egress metrics: Consul KV poll and Redis cache (2026-10-01)
+
+Closes two outbound-call gaps that neither Spring's auto-instrumentation nor the mesh covers.
+
+- `customers-service`, `visits-service`: `ChaosToggleWatcher` now records `consul.kv.poll` (timer, tag `outcome=success|failure`) and `consul.kv.poll.last.success` (gauge, Unix seconds). The watcher swallows every exception by design, so a Consul outage was visible only as a log line; alert on the gauge's age. The gauge starts at construction time, so a Consul that never answers still ages. A prefix with no keys counts as success.
+- `visits-service`: `VisitCacheService` records `visit.cache.requests` (counter, tag `result=hit|miss|error`), one count per pet lookup. `error` is kept apart from `miss` so a Redis outage does not read as a 0% hit rate; hit rate = hit / (hit + miss). A cached empty list is a hit.

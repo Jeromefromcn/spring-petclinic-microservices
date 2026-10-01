@@ -1,5 +1,6 @@
 package org.springframework.samples.petclinic.visits.cache;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -28,12 +29,13 @@ class VisitCacheServiceTest {
     @SuppressWarnings("unchecked")
     private final ValueOperations<String, Object> valueOperations = mock(ValueOperations.class);
     private final ChaosToggles chaosToggles = new ChaosToggles();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private VisitCacheService cacheService;
 
     @BeforeEach
     void setUp() {
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
-        cacheService = new VisitCacheService(visitRepository, redisTemplate, chaosToggles, 1L);
+        cacheService = new VisitCacheService(visitRepository, redisTemplate, chaosToggles, meterRegistry, 1L);
     }
 
     @Test
@@ -86,5 +88,36 @@ class VisitCacheServiceTest {
 
         verify(visitRepository, never()).findByPetIdIn(any());
         verify(valueOperations, never()).get(any());
+    }
+
+    @Test
+    void countsCacheHitMissAndErrorSeparately() {
+        Visit visit = Visit.VisitBuilder.aVisit().id(1).petId(111).build();
+        given(valueOperations.get("visits:pet:111")).willReturn(List.of(visit));
+        given(valueOperations.get("visits:pet:222")).willReturn(null);
+        given(valueOperations.get("visits:pet:333")).willThrow(new RedisConnectionFailureException("boom"));
+        given(visitRepository.findByPetIdIn(any())).willReturn(List.of());
+
+        cacheService.findByPetIdIn(List.of(111, 222, 333));
+
+        assertThat(cacheRequests("hit")).isEqualTo(1.0);
+        assertThat(cacheRequests("miss")).isEqualTo(1.0);
+        assertThat(cacheRequests("error")).isEqualTo(1.0);
+    }
+
+    @Test
+    void countsEmptyCachedListAsHitNotMiss() {
+        given(valueOperations.get("visits:pet:111")).willReturn(List.of());
+
+        cacheService.findByPetIdIn(List.of(111));
+
+        assertThat(cacheRequests("hit")).isEqualTo(1.0);
+        assertThat(cacheRequests("miss")).isZero();
+    }
+
+    private double cacheRequests(String result) {
+        io.micrometer.core.instrument.Counter counter =
+            meterRegistry.find("visit.cache.requests").tag("result", result).counter();
+        return counter == null ? 0.0 : counter.count();
     }
 }

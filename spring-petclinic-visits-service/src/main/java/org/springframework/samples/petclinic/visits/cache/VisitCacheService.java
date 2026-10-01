@@ -1,6 +1,8 @@
 package org.springframework.samples.petclinic.visits.cache;
 
 import io.lettuce.core.RedisCommandTimeoutException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,14 +33,29 @@ public class VisitCacheService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ChaosToggles chaosToggles;
     private final long redisTimeoutDelayMs;
+    private final Counter cacheHits;
+    private final Counter cacheMisses;
+    private final Counter cacheErrors;
 
     public VisitCacheService(VisitRepository visitRepository, RedisTemplate<String, Object> redisTemplate,
-                              ChaosToggles chaosToggles,
+                              ChaosToggles chaosToggles, MeterRegistry meterRegistry,
                               @Value("${chaos.redis-timeout-delay-ms:3000}") long redisTimeoutDelayMs) {
         this.visitRepository = visitRepository;
         this.redisTemplate = redisTemplate;
         this.chaosToggles = chaosToggles;
         this.redisTimeoutDelayMs = redisTimeoutDelayMs;
+        // One count per pet lookup. "error" is kept apart from "miss" so a Redis outage
+        // does not read as a 0% hit rate; hit rate = hit / (hit + miss).
+        this.cacheHits = cacheRequests(meterRegistry, "hit");
+        this.cacheMisses = cacheRequests(meterRegistry, "miss");
+        this.cacheErrors = cacheRequests(meterRegistry, "error");
+    }
+
+    private static Counter cacheRequests(MeterRegistry meterRegistry, String result) {
+        return Counter.builder("visit.cache.requests")
+            .description("Visit cache lookups per pet, by result (hit, miss, error)")
+            .tag("result", result)
+            .register(meterRegistry);
     }
 
     public List<Visit> findByPetIdIn(Collection<Integer> petIds) {
@@ -93,8 +110,10 @@ public class VisitCacheService {
     private List<Visit> getFromCache(int petId) {
         try {
             Object cached = redisTemplate.opsForValue().get(KEY_PREFIX + petId);
+            (cached != null ? cacheHits : cacheMisses).increment();
             return (List<Visit>) cached;
         } catch (DataAccessException e) {
+            cacheErrors.increment();
             log.warn("Redis unavailable, falling back to database for pet {}", petId, e);
             return null;
         }
